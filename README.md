@@ -144,7 +144,7 @@ Why we do it this way instead of pushing straight to `main`:
 
 ---
 
-## 7. Video walkthrough
+## 7. Video Walkthrough
 
 Click the thumbnail to open the walkthrough (GitHub won't play a Drive embed in the README itself):
 
@@ -154,9 +154,9 @@ Click the thumbnail to open the walkthrough (GitHub won't play a Drive embed in 
 
 ---
 
-## 8. PR bot
+## 8. PR Bot
 
-After you open a PR, **github-actions[bot]** reviews it automatically.
+After you open a PR, our **github-actions[bot]** reviews it automatically.
 
 It checks that:
 
