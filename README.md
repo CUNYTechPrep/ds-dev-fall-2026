@@ -32,7 +32,7 @@ Three things you're working with:
 
 **In git terms**, those map to specific remote names — you'll see these in the terminal and in GitHub's UI:
 
-```
+```bash
 upstream          → CUNYTechPrep/2026-ds-fall       (the class repo)
 origin            → YOUR-GITHUB-NAME/2026-ds-fall   (your fork)
 origin/main       → your fork's main branch
@@ -106,7 +106,7 @@ Complete the questions in **your** copy and run the cells.
 
 Stage **only your file** — NOT `git add .` That is the single biggest avoidable cause of merge conflicts.
 
-```
+```bash
 git status
 git add homeworks/HM_Week_1_HW.ipynb
 git commit -m "completed week 1 hw"
@@ -144,15 +144,17 @@ Why we do it this way instead of pushing straight to `main`:
 
 ---
 
-There's also a video walkthrough of this process:
+## 7. Video walkthrough
 
-<iframe src="https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/preview" width="640" height="360" allow="autoplay" allowfullscreen></iframe>
+Click the thumbnail to open the walkthrough (GitHub won't play a Drive embed in the README itself):
 
-If the player doesn't load, [watch it on Google Drive](https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/view?usp=drive_link).
+[![Watch the git workflow walkthrough](readme_images/video-thumbnail.png)](https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/view?usp=drive_link)
+
+[Watch on Google Drive](https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/view?usp=drive_link)
 
 ---
 
-## 7. PR bot
+## 8. PR bot
 
 After you open a PR, **github-actions[bot]** reviews it automatically.
 
@@ -213,7 +215,7 @@ This is a coding assignment that you usually start in class.  It is located in t
 0. Name the new copy as `Exercise-[YOUR-INITIALS].ipynb`. Zack DeSario's would be `Exercise-ZD.ipynb`.
 0. Complete all the questions in YOUR COPY of the exercise file.
 0. Push that file to your fork.
-    ```
+    ```bash
     ## NEVER DO --> git add .
     git add YOUR-EXERCISE-FILE.ipynb
     git commit -m 'YOUR COMMIT MESSAGE'
