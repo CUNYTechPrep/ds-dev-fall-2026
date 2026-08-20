@@ -2,21 +2,23 @@
 
 ## Syllabi  Links
 
-- [Wednesdays 06:30 PM - 09:00 PM](TBA)
-- [Thursdays 06:30 PM - 09:00 PM](TBA)
-- [Fridays 12:30 PM - 03:00 PM](TBA)
-- [Fridays 06:30 PM - 09:00 PM](TBA)
+- [Wednesdays 06:30 PM - 09:00 PM](https://docs.google.com/document/d/1ZA_iaWhoA4xZKuWKjHiswWUcrtVA_Hl96pqPkXXCGlI/edit?tab=t.0)
+- [Thursdays 06:30 PM - 09:00 PM](https://docs.google.com/document/d/1TJHfFqFKC_JWYLoAVT0ZVoJw3UH3orEUMjwt6STUx3U/edit?usp=sharing)
+- [Fridays 12:30 PM - 03:00 PM](https://docs.google.com/document/d/1Q2AFYANmk0f1G2ZeeIG8NCoKc3KIqgKRZ99sbM8ffss/edit?usp=sharing)
+- [Fridays 06:30 PM - 09:00 PM](https://docs.google.com/document/d/1xo_kQbGIxf4IZTDMgcAc534TN_CaWD45jkcW2Dbx-0w/edit?usp=sharing)
 
 ## Office Hours
+### Instructors
 - Zack DeSario: TBA
-- Georgios Ioannou: DM to set up a meeting.
+- Georgios Ioannou: DM to set up a meeting
 - Omar Miah: TBA
+### TAs
 - Keira James: TBA
-- Hussam Marzooq: DM to set up a meeting.
+- Hussam Marzooq: TBA
 - Penny Wang: TBA
 - Kevin Li: TBA
 
-# Git Setup & Homework Workflow Instructions
+## Git Setup & Homework Workflow Instructions
 
 How your work moves from the class repo to a graded submission. Read this carefully to set yourself up for success !!⚠️
 
