@@ -1,9 +1,10 @@
 ## Homework Submission
 - All homework is due at 12:01 PM (noon) the day before the next class.
+- All completed homework task links must be pasted into your HW Submission Sheet Google Sheet. (link to that is in bookmarked in slack). 
 - Submit GitHub links to your PR completed exercise.
 
 ## Homework Instructions: How to hand in your HWs.
-__HW assignments can be found in that each weeks README.md file. Open that weeks folder to find assignment__
+__HW assignments can be found in your syllabus under that week file__
 
 __All HWs are due at 12:01 PM (noon) the day before the next class__
 
