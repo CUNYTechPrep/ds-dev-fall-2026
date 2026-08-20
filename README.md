@@ -18,7 +18,7 @@
 - Penny Wang: TBA
 - Kevin Li: TBA
 
-## Setup Instructions (Github and Homeworks)
+## Git Setup & Homework Workflow Instructions
 
 TBD
 
