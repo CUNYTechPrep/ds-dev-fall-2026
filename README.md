@@ -7,17 +7,6 @@
 - [Fridays 12:30 PM - 03:00 PM](https://docs.google.com/document/d/1Q2AFYANmk0f1G2ZeeIG8NCoKc3KIqgKRZ99sbM8ffss/edit?usp=sharing)
 - [Fridays 06:30 PM - 09:00 PM](https://docs.google.com/document/d/1xo_kQbGIxf4IZTDMgcAc534TN_CaWD45jkcW2Dbx-0w/edit?usp=sharing)
 
-## Office Hours
-### Instructors
-- Zack DeSario: TBA
-- Georgios Ioannou: DM to set up a meeting
-- Omar Miah: TBA
-### TAs
-- Keira James: TBA
-- Hussam Marzooq: TBA
-- Penny Wang: TBA
-- Kevin Li: TBA
-
 ## Git Setup & Homework Workflow Instructions
 
 How your work moves from the class repo to a graded submission. Read this carefully to set yourself up for success !!⚠️
