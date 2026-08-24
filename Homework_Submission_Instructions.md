@@ -27,22 +27,29 @@ This covers the topic we are about to teach.  This is HW that will help you come
 __Submit by pasting the link to your message under the "Pre-Class Slack Link" column.__
 
 ### #2 Exercise HW [~1hr]
-This is a coding assignment that you usually start in class.  It is located in the `Exercise-DONT-EDIT-MAKE-COPY.ipynb` file.  See detaild instructions below. (Paste link in HW Submission sheet.)
 
-0. Make a copy of `Exercise-DONT-EDIT-MAKE-COPY.ipynb`
-0. Name the new copy as `Exercise-[YOUR-INITIALS].ipynb`. Zack DeSario's would be `Exercise-ZD.ipynb`.
-0. Complete all the questions in YOUR COPY of the exercise file.
-0. Push that file to your fork.
-    ```bash
-    ## NEVER DO --> git add .
-    git add YOUR-EXERCISE-FILE.ipynb
-    git commit -m 'YOUR COMMIT MESSAGE'
-    git push
-    ```
-0. Open your github fork on the internet, click on your HW file you just pushed. Copy that exact link.
-0. Copy that exact link, and paste it into the HW submission sheet in the Exercise column for that week.
+This is a coding assignment that you usually start in class. It is located in the `Exercise-DONT-EDIT-MAKE-COPY.ipynb` file.
 
-__Submit by pasting the link in the HW Submission sheet under the "Exercise.ipynb" column.__
+#### Instructions
+
+1. **Make a copy** of `Exercise-DONT-EDIT-MAKE-COPY.ipynb`.
+   - Do **not** edit or submit the original template.Work only on your copy.
+2. **Rename your copy** using a unique filename that identifies you and the week.
+   - Your filename must include your full name, CUNY/student ID, or another stable unique identifier. **Do not use initials alone.**
+   - Good examples:
+     - `faizan_khan_week_3_hw.ipynb`
+     - `student_12345678_week_03_exercise.ipynb`
+3. **Complete all questions** in your copy of the exercise notebook.
+4. **Push your completed notebook to your fork.**
+   ```bash
+   # NEVER DO:
+   git add .
+
+   # Instead, add only your exercise file:
+   git add YOUR-EXERCISE-FILE.ipynb
+   git commit -m "YOUR COMMIT MESSAGE"
+   git push
+   ```
 
 ### #3 LinkedIn Post [~10min]
 Every week you have to post on LinkedIn. It can be anthing data science related unless instructed otherwise.
