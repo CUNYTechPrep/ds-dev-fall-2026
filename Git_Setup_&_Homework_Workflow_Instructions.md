@@ -71,12 +71,7 @@ In the terminal, run `git status` to confirm you're on `week{x}`. If you're not,
 
 ## 4. Copy the exercise and rename it
 
-**Don't edit the exercise file directly.** Copy it into `homeworks/`, rename it with your initials, and work on the copy.
-
-Examples:
-
-- `homeworks/HM_Week_1_HW.ipynb`
-- `homeworks/HM_week_03_exercise.ipynb`
+**Don't edit the exercise file directly.** Copy it into `homeworks/`, rename it with a unique identifier (not just initials), such as `faizan_khan_Week_3_HW.ipynb` or `student_12345678_week_03_exercise.ipynb`, and work on the copy. Bare initials are not accepted.
 
 ![Copy](readme_images/copy.png)
 
