@@ -40,7 +40,8 @@ This is a coding assignment that you usually start in class. It is located in th
      - `faizan_khan_week_3_hw.ipynb`
      - `student_12345678_week_03_exercise.ipynb`
 3. **Complete all questions** in your copy of the exercise notebook.
-4. **Push your completed notebook to your fork.**
+4. **Move it** to the `exercise/` folder for the week you're working on.
+5. **Push your completed notebook to your fork.**
    ```bash
    # NEVER DO:
    git add .
