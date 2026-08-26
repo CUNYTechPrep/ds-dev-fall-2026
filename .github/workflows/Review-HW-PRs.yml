@@ -1,0 +1,572 @@
+# =============================================================================
+# Auto-review homework PRs (fall version)
+#
+# Runs checks against homework PRs and auto-merges the ones that pass. This is
+# the fall rewrite of the summer bot -- same core idea, adapted for a central
+# repo shared across multiple sections and a per-week folder layout instead of
+# one flat homeworks/ folder. See the summer repo's history for the earlier
+# design if you're wondering why something is built the way it is; this file
+# only carries forward what still applies and drops what was summer-specific
+# (the old/new naming-era split, the flat homeworks/ directory).
+#
+# FOLDER LAYOUT this expects, per week:
+#   Week-{NN}-{Topic}/
+#     Exercise_DONT_EDIT_MAKE_COPY_{anything}.ipynb   <- template, lives at the week's
+#                                                root (NOT inside exercise/),
+#                                                so it's a one-click grab.
+#                                                {Topic} and the rest of the
+#                                                template's filename are fully
+#                                                free -- only the prefix has to
+#                                                stay consistent.
+#     exercise/
+#       {unique_id}_week_{NN}_exercise.ipynb  <- student submissions go here,
+#                                                 never at the week root.
+# A week with no homework assigned just has no exercise/ folder (and maybe no
+# template either) -- that's expected, not an error, and can change over time
+# as the semester's content firms up.
+#
+# NAMING RULES:
+#   - Submission: {unique_id}_week_{NN}_exercise.ipynb, unique_id must NOT be
+#     bare initials (2-4 letters only) -- this repo is shared across sections,
+#     and bare initials collided for real over the summer. Use your full name
+#     (Firstname_Lastname) or an identifier that includes a digit (student ID,
+#     etc). Case-insensitive, tolerates a trailing "_copy"/" copy" (Jupyter's
+#     duplicate-file artifact), tolerates "Week1" as well as "Week_1".
+#   - Template: filename must start with Exercise_DONT_EDIT_MAKE_COPY_ (case-
+#     insensitive) and lives directly in the week's own folder, not inside
+#     exercise/. Everything after the prefix is free -- name it whatever fits
+#     the week's topic.
+#   - The week number embedded in a submission's filename must match the week
+#     number of the folder it's sitting in. A correct Week 3 submission filed
+#     under Week-05's exercise/ folder is still wrong, on purpose -- this is a
+#     shared repo and misplaced files are real confusion for whoever's
+#     grading, not just a cosmetic issue.
+#   - One week per PR. A PR that bundles two weeks' worth of files, even if
+#     both are individually correct, gets flagged same as an accidental
+#     double-submission -- see REASONS.duplicate below for why these get
+#     different wording despite triggering the same label.
+#
+# STALE-PR AUTO-CLOSE: a PR that's carrying one of our fail labels (bug,
+# duplicate, invalid, question) and hasn't had a new commit pushed in
+# STALE_WEEKS gets closed outright, with instructions on how to reopen if the
+# student comes back to it later. No warning/grace-period comment first --
+# this is meant as housekeeping (keep the open-PR list to things that
+# actually need attention), not a punitive deadline mechanism, so a clean
+# direct close plus clear reopen instructions is the right amount of
+# ceremony. Only ever applies to PRs with an actual outstanding ask on the
+# student -- a PR that's fully passing but stuck for some other reason (e.g.
+# our own merge failing) never has anything in `applicable`, so it's never
+# eligible no matter how old it gets.
+#
+# Everything below this point that isn't about naming/location/staleness --
+# the fork-only scope gate, the mergeable-null retry, dismissing stale
+# reviews before merging, the SHA-pinned action, the sweep summary -- carries
+# over unchanged from the summer bot. See that repo's workflow file and
+# project notes for the reasoning if any of it looks unmotivated here.
+#
+# KNOWN FAILURE MODE TO WATCH FOR: the summer repo hit a case where
+# GITHUB_TOKEN's own merge call returned 403 "Resource not accessible by
+# integration" on PRs that were otherwise completely clean to merge, while a
+# real collaborator account could merge the identical PR by hand with zero
+# issues. Root cause was never fully pinned down (most likely a branch
+# protection/ruleset push restriction excluding the Actions app), and the
+# workaround was routing just the merge call through a PAT via getOctokit().
+# Don't pre-emptively wire that up here -- it adds a secret dependency for a
+# problem this repo may not even have -- but if merges start silently
+# 403ing here too, that's the playbook, not a new bug to re-diagnose from
+# scratch.
+#
+# BEFORE TRUSTING THIS WITH REAL PRs: run it once by hand with "Dry run"
+# checked (Actions tab -> this workflow -> Run workflow). It logs exactly
+# what it *would* do -- labels, reviews, merges, closes -- without touching
+# anything for real. (Dry run only applies to manual runs -- once live,
+# pull_request_target events always act for real.)
+# =============================================================================
+
+name: Auto-review homework PRs
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (log only, no labels/reviews/merges/closes)'
+        type: boolean
+        default: false
+
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+
+jobs:
+  check-and-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate open PRs
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const DRY_RUN = context.payload.inputs?.dry_run === 'true';
+
+            // ---- tunables -----------------------------------------------------
+            // Single naming era for fall -- no old/new-convention split to guess
+            // between like the summer repo needed, since this is a clean start.
+            // unique_id must not be bare 2-4 letter initials: either a
+            // Firstname_Lastname-shaped pair, or anything containing a digit
+            // (student ID, etc). Learned the hard way over the summer that bare
+            // initials collide for real once you're sharing a repo across
+            // sections.
+            const NAME_RE =
+              /^(?:(?:[A-Za-z]+_[A-Za-z]+)|(?:[A-Za-z]+[A-Za-z0-9]*_[A-Za-z0-9]*[0-9][A-Za-z0-9]*))_week_?(\d+)_exercise(?:[ _]copy)?\.ipynb$/i;
+            // Matches "Week-{NN}-{anything}/exercise/{filename}" and captures the
+            // week number from the FOLDER, so it can be cross-checked against the
+            // week number embedded in the filename itself (NAME_RE's capture
+            // group above). The topic text after the week number is intentionally
+            // unconstrained -- instructors can rename it whenever, the bot never
+            // looks at it.
+            const WEEK_FOLDER_RE = /^Week-(\d+)-[^/]+\/exercise\/[^/]+$/i;
+            // Case-insensitive, deliberately not anchored to a fixed suffix --
+            // whatever comes after this prefix is the instructor's call.
+            const TEMPLATE_PREFIX = 'Exercise_DONT_EDIT_MAKE_COPY';
+            const MERGE_METHOD = 'squash'; // 'merge' | 'squash' | 'rebase'
+            // How long a flagged PR can sit with no new commits before it's
+            // closed outright. Measured from the last commit's own timestamp,
+            // not the PR's updated_at -- see closeIfStale() for why that
+            // distinction matters.
+            const STALE_WEEKS = 3;
+            const STALE_MS = STALE_WEEKS * 7 * 24 * 60 * 60 * 1000;
+
+            const OUR_LABELS = ['bug', 'duplicate', 'invalid', 'question'];
+
+            // Pulls "Week-05-Vibe-Coding-101" out of
+            // "Week-05-Vibe-Coding-101/exercise/jsmith_week_05_exercise.ipynb".
+            // Returns null if the path doesn't look like it's inside some week's
+            // exercise/ folder at all.
+            function weekFolderOf(filename) {
+              const idx = filename.toLowerCase().indexOf('/exercise/');
+              return idx === -1 ? null : filename.slice(0, idx);
+            }
+
+            // One specific line per offending file instead of one generic
+            // message for the whole PR -- "please remove those changes" is
+            // wrong advice for someone whose real submission just landed in the
+            // wrong spot, they need to move it, not delete it.
+            function explainInvalidFile(filename) {
+              const reason = classifyFile(filename);
+              const basename = filename.split('/').pop();
+              if (reason === 'template') {
+                return `\`${filename}\` is the template itself, don't edit it, make your own copy inside that week's \`exercise/\` folder instead`;
+              }
+              if (reason === 'wrong-location') {
+                return `\`${filename}\` needs to be inside that week's \`exercise/\` folder, it isn't right now`;
+              }
+              if (reason === 'week-mismatch') {
+                const [, fileWeek] = basename.match(NAME_RE);
+                const folderWeek = filename.match(WEEK_FOLDER_RE)[1];
+                return `\`${filename}\` says Week ${fileWeek} in its filename but is sitting inside the Week ${folderWeek} folder -- these need to match`;
+              }
+              // 'bad-name' -- covers everything from a near-miss typo to a file
+              // that was never meant to be a submission at all (a README, a
+              // reference notebook, a scratch file), so the wording stays
+              // neutral rather than assuming they were attempting the pattern
+              // and just got it wrong.
+              return (
+                `\`${filename}\` isn't recognized as a homework submission ` +
+                `(expected something like \`firstname_lastname_week_05_exercise.ipynb\` inside that week's \`exercise/\` folder)`
+              );
+            }
+
+            // Every entry returns an array of lines, not a single string, so
+            // 'invalid' can produce one bullet per offending file while the
+            // rest just produce one.
+            const REASONS = {
+              bug: () => ['This PR has a merge conflict with `main`. Resolve it and push again.'],
+              // Same label either way, deliberately different wording: two files
+              // for the same week is almost always an accident (resubmit,
+              // duplicate copy), two files for *different* weeks is a student
+              // deliberately bundling weeks together, which needs a different
+              // fix (split the PR) and different framing (this isn't a mistake,
+              // it's against the one-week-per-PR policy).
+              duplicate: ({ names, multiWeek }) => [
+                multiWeek
+                  ? `This PR bundles multiple weeks together (${names.join(', ')}). Please split these into separate PRs, ` +
+                    `one per week -- keeps your git history clean and each week gets reviewed on its own.`
+                  : `This PR includes more than one homework file for the same week (${names.join(', ')}). Keep only your own submission.`,
+              ],
+              invalid: (names) => names.map((n) => `This PR changes ${explainInvalidFile(n)}.`),
+              question: (subReason) => [
+                subReason === 'template-missing'
+                  ? "Couldn't find a template to check this against, which leaves me a little lost -- I've got nothing to compare you to. " +
+                    "Might be the wrong week number, or this week just doesn't have homework assigned yet. Double-check the number in your " +
+                    'filename, and if it looks right, ping an instructor -- this week might not be graded.'
+                  : "This still matches the blank template, looks like the homework hasn't " +
+                    'been filled in yet. Complete your answers and push again.',
+              ],
+            };
+            // ---------------------------------------------------------------------
+
+            const { owner, repo } = context.repo;
+
+            // Reads an .ipynb file's cell source text only (ignores outputs,
+            // execution_count, and metadata, which change just from running a
+            // notebook regardless of whether any answer was actually written).
+            // Returns null if the file is missing, unreadable, or not valid JSON.
+            async function getNotebookSource(path, ref) {
+              try {
+                const res = await github.rest.repos.getContent({ owner, repo, path, ref });
+                if (Array.isArray(res.data) || !res.data.content) return null;
+                const text = Buffer.from(res.data.content, 'base64').toString('utf-8');
+                const nb = JSON.parse(text);
+                return (nb.cells || [])
+                  .map((c) => (Array.isArray(c.source) ? c.source.join('') : c.source || ''))
+                  .join('\n');
+              } catch {
+                return null;
+              }
+            }
+
+            // The template can be named anything as long as it starts with
+            // TEMPLATE_PREFIX, so this lists the submission's own week folder
+            // and picks whichever entry matches, rather than guessing a fixed
+            // filename the way the summer bot had to. One lookup, no guessing --
+            // the whole reason the fall layout (template always in the week's
+            // own root) is simpler to support than summer's split locations.
+            async function findTemplate(weekFolder, baseRef) {
+              if (!weekFolder) return null;
+              try {
+                const res = await github.rest.repos.getContent({ owner, repo, path: weekFolder, ref: baseRef });
+                if (!Array.isArray(res.data)) return null;
+                const templateEntry = res.data.find(
+                  (entry) => entry.type === 'file' && entry.name.toLowerCase().startsWith(TEMPLATE_PREFIX.toLowerCase())
+                );
+                if (!templateEntry) return null;
+                return await getNotebookSource(templateEntry.path, baseRef);
+              } catch {
+                return null;
+              }
+            }
+
+            // Reports *why* a file isn't a valid submission, not just whether --
+            // 'template' (touched the template itself), 'wrong-location' (right
+            // name, not inside any week's exercise/ folder), 'week-mismatch'
+            // (right name, right kind of location, but the week number in the
+            // filename doesn't match the folder it's in), 'bad-name' (doesn't
+            // match the pattern at all), or 'valid'. Each maps to a different,
+            // specific troubleshooting message above.
+            function classifyFile(filename) {
+              const basename = filename.split('/').pop();
+              if (basename.toLowerCase().startsWith(TEMPLATE_PREFIX.toLowerCase())) return 'template';
+
+              // Name shape is checked BEFORE location on purpose, same reasoning
+              // as the summer bot: "wrong-location" should only ever fire for a
+              // file that genuinely looks like a homework submission and just
+              // landed in the wrong spot. Checking location first would tell a
+              // student "README.md needs to be inside an exercise/ folder",
+              // which is nonsense, README.md was never a submission attempt.
+              if (!NAME_RE.test(basename)) return 'bad-name';
+
+              const folderMatch = filename.match(WEEK_FOLDER_RE);
+              if (!folderMatch) return 'wrong-location';
+
+              const [, fileWeek] = basename.match(NAME_RE);
+              const folderWeek = folderMatch[1];
+              // Compare numerically so "5" and "05" count as the same week.
+              if (parseInt(fileWeek, 10) !== parseInt(folderWeek, 10)) return 'week-mismatch';
+
+              return 'valid';
+            }
+
+            function isValidHwName(filename) {
+              return classifyFile(filename) === 'valid';
+            }
+
+            // Adds/removes labels to match `applicable`, returns only the ones
+            // that are newly added this run (so we know what's actually new to
+            // comment about, vs. something already flagged last cycle).
+            // `ignore` lists labels we have no opinion on this cycle (e.g. the
+            // content check couldn't run) -- those are left exactly as they
+            // are, neither added nor removed.
+            async function syncLabels(pr, applicable, ignore = []) {
+              const current = pr.labels.map((l) => l.name).filter((n) => OUR_LABELS.includes(n));
+              const toAdd = applicable.filter((l) => !current.includes(l));
+              const toRemove = current.filter((l) => !applicable.includes(l) && !ignore.includes(l));
+
+              if (toRemove.length) {
+                console.log(`  #${pr.number}: removing ${toRemove.join(', ')} (resolved)`);
+                if (!DRY_RUN) {
+                  for (const name of toRemove) {
+                    await github.rest.issues
+                      .removeLabel({ owner, repo, issue_number: pr.number, name })
+                      .catch(() => {});
+                  }
+                }
+              }
+              return toAdd;
+            }
+
+            async function requestChanges(pr, newLabels, reasonArgs) {
+              const body = newLabels
+                .flatMap((l) => REASONS[l](reasonArgs[l]).map((line) => `- ${line}`))
+                .join('\n');
+              console.log(`  #${pr.number}: flagging ${newLabels.join(', ')}`);
+              if (DRY_RUN) {
+                console.log(`  #${pr.number}: [dry run] would request changes:\n${body}`);
+                return;
+              }
+              await github.rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: newLabels });
+              await github.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: pr.number,
+                event: 'REQUEST_CHANGES',
+                body,
+              });
+            }
+
+            // Sync has only ever updated labels, never the review itself, so a
+            // PR that once failed and got a REQUEST_CHANGES review keeps that
+            // review sitting there even after the label's removed. If main
+            // requires reviews to be resolved before merging, that stale review
+            // blocks the merge and the token can't clear it by approving (that's
+            // permanently disallowed), so dismiss it explicitly instead.
+            async function dismissStaleReviews(pr) {
+              const { data: reviews } = await github.rest.pulls.listReviews({ owner, repo, pull_number: pr.number });
+              const stale = reviews.filter((r) => r.user?.login === 'github-actions[bot]' && r.state === 'CHANGES_REQUESTED');
+              for (const review of stale) {
+                await github.rest.pulls
+                  .dismissReview({
+                    owner,
+                    repo,
+                    pull_number: pr.number,
+                    review_id: review.id,
+                    message: 'All checks pass now, clearing this so the PR can merge.',
+                  })
+                  .catch((err) => console.log(`  #${pr.number}: couldn't dismiss stale review - ${err.message}`));
+              }
+            }
+
+            // Closes PRs that still carry one of our fail labels (an actual
+            // outstanding ask on the student) and haven't had a new commit
+            // pushed in STALE_WEEKS. Anchored to the last commit's own
+            // timestamp, not pr.updated_at -- our own label/review writes touch
+            // updated_at too, which would make that clock reset for reasons
+            // that have nothing to do with the student. Never called unless
+            // `applicable.length > 0`, so a PR that's fully passing but stuck
+            // for some unrelated reason (our own merge failing, say) is never a
+            // candidate no matter how long it sits.
+            async function closeIfStale(pr, applicable) {
+              const { data: commits } = await github.rest.pulls.listCommits({ owner, repo, pull_number: pr.number, per_page: 100 });
+              if (!commits.length) return false;
+              const lastCommitDate = new Date(commits[commits.length - 1].commit.author.date);
+              if (Date.now() - lastCommitDate.getTime() < STALE_MS) return false;
+
+              console.log(`  #${pr.number}: no edits in ${STALE_WEEKS}+ weeks, closing`);
+              if (DRY_RUN) {
+                console.log(`  #${pr.number}: [dry run] would close`);
+                return true;
+              }
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body:
+                  `Closing this since it's been ${STALE_WEEKS}+ weeks without an update and there's still an open issue above. ` +
+                  `Your work isn't lost -- if you want to pick this back up, you can reopen this PR yourself (there's a button at the ` +
+                  `bottom of this page) or push a new commit and reopen it, or just open a fresh PR if that's easier.`,
+              });
+              await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' });
+              return true;
+            }
+
+            async function evaluatePR(prNumber) {
+              try {
+                let pr = (await github.rest.pulls.get({ owner, repo, pull_number: prNumber })).data;
+
+                if (pr.draft) return 'draft';
+
+                // Only touch PRs from an actual fork (students, who don't have
+                // write access). Instructors/collaborators work on branches
+                // within this same repo -- head.repo and base.repo will match --
+                // and that's course content development, not a homework
+                // submission, regardless of what files it touches or whether
+                // it's conflicted. Leave those completely alone.
+                // (head.repo can be null if the source fork was since deleted;
+                // that's still a former fork, so don't treat null as same-repo.)
+                const sameRepo = pr.head.repo && pr.head.repo.full_name === pr.base.repo.full_name;
+                if (sameRepo) {
+                  console.log(`  #${pr.number}: same-repo PR, not a fork submission, leaving alone`);
+                  return 'same-repo';
+                }
+
+                // GitHub computes this async and can return null while it's
+                // running, especially the very first time anyone's queried a
+                // given PR. Give it a few short chances to finish within this
+                // run -- re-fetching is what actually triggers/checks the job,
+                // just waiting doesn't -- before falling back to letting the
+                // next run pick it up.
+                for (let attempt = 1; pr.mergeable === null && attempt < 3; attempt++) {
+                  await new Promise((resolve) => setTimeout(resolve, 3000));
+                  pr = (await github.rest.pulls.get({ owner, repo, pull_number: prNumber })).data;
+                }
+
+                if (pr.mergeable === null) {
+                  console.log(`  #${pr.number}: mergeable status still computing after retries, skipping this cycle`);
+                  return 'pending';
+                }
+
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner,
+                  repo,
+                  pull_number: pr.number,
+                  per_page: 100,
+                });
+
+                const matching = files.filter((f) => isValidHwName(f.filename));
+                const nonMatching = files.filter((f) => !isValidHwName(f.filename));
+
+                const applicable = [];
+                const reasonArgs = {};
+
+                if (pr.mergeable === false) applicable.push('bug');
+                if (nonMatching.length) {
+                  applicable.push('invalid');
+                  reasonArgs.invalid = nonMatching.map((f) => f.filename);
+                }
+                if (matching.length > 1) {
+                  applicable.push('duplicate');
+                  const weeksInvolved = new Set(matching.map((f) => f.filename.split('/').pop().match(NAME_RE)[1]));
+                  reasonArgs.duplicate = { names: matching.map((f) => f.filename), multiWeek: weeksInvolved.size > 1 };
+                }
+
+                // Only meaningful to check content when there's exactly one
+                // valid homework file and nothing else was touched.
+                let questionUndetermined = false;
+                if (matching.length === 1 && nonMatching.length === 0) {
+                  const weekFolder = weekFolderOf(matching[0].filename);
+                  const templateSrc = await findTemplate(weekFolder, pr.base.ref);
+                  const submissionSrc = await getNotebookSource(matching[0].filename, pr.head.sha);
+
+                  if (submissionSrc === null) {
+                    // Genuinely can't read a file we just saw listed on the PR --
+                    // rare and almost certainly transient. Leave 'question'
+                    // untouched rather than guessing; bug/duplicate/invalid
+                    // (already computed above) still apply normally below.
+                    console.log(`  #${pr.number}: couldn't read the submitted notebook this cycle, leaving content check for next run`);
+                    questionUndetermined = true;
+                  } else if (templateSrc === null || templateSrc.trim() === submissionSrc.trim()) {
+                    // Missing/unreadable template (bad week number, or a week
+                    // with no homework assigned) fails closed into the same
+                    // bucket as "not filled in" -- we can't verify it either
+                    // way, so it doesn't get to pass. Track which of the two it
+                    // actually was so the comment can say something specific
+                    // instead of guessing.
+                    applicable.push('question');
+                    reasonArgs.question = templateSrc === null ? 'template-missing' : 'blank';
+                  }
+                }
+
+                const ignoreForSync = questionUndetermined ? ['question'] : [];
+                const newLabels = await syncLabels(pr, applicable, ignoreForSync);
+                if (newLabels.length) {
+                  await requestChanges(pr, newLabels, reasonArgs);
+                  return 'flagged';
+                }
+
+                if (applicable.length > 0) {
+                  // Nothing new to flag this cycle, but a real problem is still
+                  // sitting here unresolved. Check whether it's gone stale long
+                  // enough to close outright.
+                  const closed = await closeIfStale(pr, applicable);
+                  return closed ? 'closed' : 'unchanged';
+                }
+
+                if (questionUndetermined) {
+                  console.log(`  #${pr.number}: content unverified this cycle, not merging yet`);
+                  return 'unverified';
+                }
+
+                console.log(`  #${pr.number}: all checks passed, merging`);
+                if (!DRY_RUN) {
+                  await dismissStaleReviews(pr);
+                  return await github.rest.pulls
+                    .merge({
+                      owner,
+                      repo,
+                      pull_number: pr.number,
+                      merge_method: MERGE_METHOD,
+                      sha: pr.head.sha, // guards against merging a commit newer than what we just checked
+                    })
+                    .then(() => 'merged')
+                    .catch((err) => {
+                      // Octokit errors carry more detail than err.message alone --
+                      // status and the API's own specific reason, sometimes a docs
+                      // link. Log all of it so a failure is diagnosable straight
+                      // from this log, not guessed at from unrelated forum posts.
+                      const apiMessage = err.response?.data?.message;
+                      const docsUrl = err.response?.data?.documentation_url;
+                      console.log(`  #${pr.number}: merge failed [${err.status || '?'}] - ${err.message}`);
+                      if (apiMessage && apiMessage !== err.message) console.log(`    reason: ${apiMessage}`);
+                      if (docsUrl) console.log(`    docs: ${docsUrl}`);
+                      return 'merge-failed';
+                    });
+                }
+                return 'dry-run-pass';
+              } catch (err) {
+                console.log(`  #${prNumber}: unexpected error, skipping - ${err.message}`);
+                return 'error';
+              }
+            }
+
+            // One-line tally so a sweep's outcome is legible without counting
+            // labels by hand -- prints only the categories that actually
+            // occurred. Order is roughly "most worth noticing first": real
+            // actions and failures before routine skips.
+            function summarizeOutcomes(outcomes) {
+              const order = [
+                'merged',
+                'merge-failed',
+                'flagged',
+                'closed',
+                'unverified',
+                'unchanged',
+                'pending',
+                'same-repo',
+                'draft',
+                'dry-run-pass',
+                'error',
+              ];
+              const counts = {};
+              for (const o of outcomes) counts[o] = (counts[o] || 0) + 1;
+              const parts = order.filter((k) => counts[k]).map((k) => `${counts[k]} ${k}`);
+              return `${parts.join(', ')} (${outcomes.length} total)`;
+            }
+
+            if (context.eventName === 'pull_request_target') {
+              // Fast path: react to just the PR that triggered this run.
+              const prNumber = context.payload.pull_request.number;
+              console.log(`Evaluating PR #${prNumber} (${context.payload.action})`);
+              const outcome = await evaluatePR(prNumber);
+              console.log(`Summary: ${summarizeOutcomes([outcome])}`);
+            } else {
+              // Backstop path (schedule or manual dispatch): sweep every open
+              // PR. Catches anything the event path missed -- a mergeable
+              // check that was still computing, or PRs opened before this
+              // workflow existed, which never fire a pull_request_target
+              // event on their own.
+              const prs = await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100,
+              });
+              console.log(`Backstop sweep: evaluating ${prs.length} open PR(s)${DRY_RUN ? ' [DRY RUN]' : ''}`);
+              const outcomes = [];
+              for (const prSummary of prs) {
+                outcomes.push(await evaluatePR(prSummary.number));
+              }
+              console.log(`Summary: ${summarizeOutcomes(outcomes)}`);
+            }
