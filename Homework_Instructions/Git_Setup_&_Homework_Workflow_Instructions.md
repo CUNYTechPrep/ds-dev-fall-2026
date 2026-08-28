@@ -4,7 +4,7 @@ How your work moves from the class repo to a graded submission. Read this carefu
 
 ## The Big Picture
 
-![Student Git Workflow](readme_images/workflow-overview.png)
+![Student Git Workflow](../readme_images/workflow-overview.png)
 
 Three things you're working with:
 
@@ -35,13 +35,13 @@ The steps, in order: **fork → branch → Codespace → copy the exercise → s
 
 Fork the class repo to your own GitHub account (once, at the start of the semester).
 
-![Click Fork](readme_images/click_fork.png)
-![Create Fork](readme_images/create_fork.png)
+![Click Fork](../readme_images/click_fork.png)
+![Create Fork](../readme_images/create_fork.png)
 
 **Every week after that:** before you make a new branch, go to your fork on `main` and **Sync fork** so you pick up merged PRs and new files from the class repo.
 
-![Sync your fork](readme_images/sync-fork.png)
-![Press Sync](readme_images/Sync-button.png)
+![Sync your fork](../readme_images/sync-fork.png)
+![Press Sync](../readme_images/Sync-button.png)
 
 ---
 
@@ -49,7 +49,7 @@ Fork the class repo to your own GitHub account (once, at the start of the semest
 
 On your fork, create a branch off the updated `main`, named `week{x}` (example: `week1`).
 
-![Make Branch](readme_images/make_branch.png)
+![Make Branch](../readme_images/make_branch.png)
 
 ---
 
@@ -57,13 +57,13 @@ On your fork, create a branch off the updated `main`, named `week{x}` (example: 
 
 Press **Code** on your fork and create a Codespace **on this week's branch**.
 
-![Make Codespace](readme_images/codespace.png)
-![Your workflow in Codespaces](readme_images/codespaces-workflow.png)
+![Make Codespace](../readme_images/codespace.png)
+![Your workflow in Codespaces](../readme_images/codespaces-workflow.png)
 
 That opens in the browser. Browser Codespaces work, but opening the same Codespace in **local VS Code is more stable**.
 
-![More Actions](readme_images/more_actions.png)
-![Open in VS Code](readme_images/vscode.png)
+![More Actions](../readme_images/more_actions.png)
+![Open in VS Code](../readme_images/vscode.png)
 
 In the terminal, run `git status` to confirm you're on `week{x}`. If you're not, `git switch week{x}`.
 
@@ -73,7 +73,7 @@ In the terminal, run `git status` to confirm you're on `week{x}`. If you're not,
 
 **Don't edit the exercise file directly.** Copy it into `homeworks/`, rename it with a unique identifier (not just initials), such as `faizan_khan_Week_3_HW.ipynb` or `student_12345678_week_03_exercise.ipynb`, and work on the copy. Bare initials are not accepted.
 
-![Copy](readme_images/copy.png)
+![Copy](../readme_images/copy.png)
 
 Complete the questions in **your** copy and run the cells.
 
@@ -92,7 +92,7 @@ git push
 
 First push on a brand-new branch prompts you to set an upstream — accept it, or run `git push --set-upstream origin week{x}`. Either way, this goes to *your fork*, not the class repo.
 
-![git](readme_images/git.png)
+![git](../readme_images/git.png)
 
 You can do the same steps in the GUI instead. Same result.
 
@@ -106,11 +106,11 @@ A pull request (PR) is a proposal: "take the commits on my branch and merge them
 
 1. **Open the PR.** After you push, GitHub shows a **Compare & pull request** banner on your fork — click it. Don't see it? Go to your fork → **Pull requests** → **New pull request**, or use **Contribute**.
 
-![Open Pull Request](readme_images/open-PR.png)
+![Open Pull Request](../readme_images/open-PR.png)
 
 2. **Check the direction & Review the diff.** Base should be the upstream repo's `main`; compare should be your `week{x}` branch. You're proposing to merge your branch into the class repo, not the other way around. Add a short description of what you did, etc.
 
-![PR Compare](readme_images/PR-compare.png)
+![PR Compare](../readme_images/PR-compare.png)
 
 Why we do it this way instead of pushing straight to `main`:
 
@@ -125,7 +125,7 @@ Why we do it this way instead of pushing straight to `main`:
 
 Click the thumbnail to open the walkthrough (GitHub won't play a Drive embed in the README itself):
 
-[![Watch the git workflow walkthrough](readme_images/video-thumbnail.png)](https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/view?usp=drive_link)
+[![Watch the git workflow walkthrough](../readme_images/video-thumbnail.png)](https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/view?usp=drive_link)
 
 [Watch on Google Drive](https://drive.google.com/file/d/1sG88k-EpimCImHG6R1geW6BaZ6aLOcIl/view?usp=drive_link)
 
@@ -155,5 +155,5 @@ Accepted filenames look like:
 
 DM us if you think the bot made a mistake and we'll review your work and leave comments if anything needs fixing. Once it's approved, it gets merged. You don't need to merge it yourself.
 
-![PR List](readme_images/PR-list.png)
+![PR List](../readme_images/PR-list.png)
 ___
