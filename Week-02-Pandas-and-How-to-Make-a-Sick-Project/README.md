@@ -1,4 +1,4 @@
-# Week 2 - Pandas Part 2
+# Week 2 - Pandas and How to Make a Sick Project
 
 ## Agenda 
 0. Remind me to 
