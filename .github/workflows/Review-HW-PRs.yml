@@ -132,9 +132,96 @@ jobs:
     steps:
       - name: Evaluate open PRs
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          SLACK_ENABLED: ${{ secrets.SLACK_ENABLED }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
         with:
           script: |
             const DRY_RUN = context.payload.inputs?.dry_run === 'true';
+            
+            // ---- Slack notification configuration --------------------------------
+            const SLACK_ENABLED = process.env.SLACK_ENABLED === 'true';
+            const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+            const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
+            const SLACK_CHANNEL = process.env.SLACK_CHANNEL || '#homework-notifications';
+            
+            // Slack notification templates
+            const SLACK_TEMPLATES = {
+              pr_opened: (pr, author) => 
+                `📝 *New Homework PR Opened*\n` +
+                `👤 ${author || 'Unknown'} opened PR #${pr.number}\n` +
+                `📚 ${pr.title}\n` +
+                `🔗 ${pr.html_url}\n` +
+                `📅 Week: ${extractWeekNumber(pr.title) || 'Unknown'}`,
+              
+              pr_merged: (pr, author) =>
+                `✅ *Homework PR Merged*\n` +
+                `👤 ${author || 'Unknown'}'s homework passed all checks!\n` +
+                `📚 PR #${pr.number}: ${pr.title}\n` +
+                `🔗 ${pr.html_url}\n` +
+                `🎉 Great work!`,
+              
+              pr_flagged: (pr, author, reason) =>
+                `⚠️ *Homework PR Needs Changes*\n` +
+                `👤 ${author || 'Unknown'}'s PR needs attention\n` +
+                `📚 PR #${pr.number}: ${pr.title}\n` +
+                `🔗 ${pr.html_url}\n` +
+                `❓ Issue: ${reason || 'See PR comments for details'}`,
+              
+              pr_closed: (pr, author) =>
+                `🔒 *Homework PR Closed*\n` +
+                `👤 ${author || 'Unknown'}'s PR was closed\n` +
+                `📚 PR #${pr.number}: ${pr.title}\n` +
+                `🔗 ${pr.html_url}\n` +
+                `💡 You can reopen this PR if needed`,
+              
+              pr_stale: (pr, author, weeks) =>
+                `⏰ *Stale Homework PR*\n` +
+                `👤 ${author || 'Unknown'}'s PR has been open for ${weeks}+ weeks\n` +
+                `📚 PR #${pr.number}: ${pr.title}\n` +
+                `🔗 ${pr.html_url}\n` +
+                `🔄 Please address any outstanding issues or reopen if needed`,
+            };
+            
+            // Helper function to extract week number from PR title or files
+            function extractWeekNumber(text) {
+              const weekMatch = text?.match(/week[_ -]?(\d+)/i);
+              return weekMatch ? weekMatch[1] : null;
+            }
+            
+            // Slack notification function
+            async function sendSlackNotification(message, pr = null) {
+              if (!SLACK_ENABLED) return;
+              
+              try {
+                if (SLACK_WEBHOOK_URL) {
+                  // Use webhook method
+                  const response = await fetch(SLACK_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      text: message,
+                      mrkdwn: true,
+                      channel: SLACK_CHANNEL,
+                    }),
+                  });
+                  
+                  if (!response.ok) {
+                    console.log(`Slack webhook failed: ${response.status}`);
+                  } else {
+                    console.log(`Slack notification sent successfully`);
+                  }
+                } else if (SLACK_BOT_TOKEN) {
+                  // Use bot token method
+                  // This would require additional setup with Slack API
+                  console.log('Bot token method configured but not implemented yet');
+                }
+              } catch (error) {
+                console.log(`Slack notification error: ${error.message}`);
+              }
+            }
 
             // ---- tunables -----------------------------------------------------
             // Single naming era for fall -- no old/new-convention split to guess
@@ -607,6 +694,15 @@ jobs:
                 const newLabels = await syncLabels(pr, applicable, ignoreForSync);
                 if (newLabels.length) {
                   await requestChanges(pr, newLabels, reasonArgs);
+                  // Send Slack notification for flagged PR
+                  const flagReason = newLabels.includes('question') ? 'Content check failed' : 
+                                   newLabels.includes('invalid') ? 'Invalid file(s)' :
+                                   newLabels.includes('duplicate') ? 'Duplicate files' :
+                                   newLabels.includes('bug') ? 'Merge conflict' : 'Multiple issues';
+                  await sendSlackNotification(
+                    SLACK_TEMPLATES.pr_flagged(pr, pr.user?.login, flagReason),
+                    pr
+                  );
                   return 'flagged';
                 }
 
@@ -615,6 +711,13 @@ jobs:
                   // sitting here unresolved. Check whether it's gone stale long
                   // enough to close outright.
                   const closed = await closeIfStale(pr, applicable);
+                  if (closed) {
+                    // Send Slack notification for closed PR
+                    await sendSlackNotification(
+                      SLACK_TEMPLATES.pr_closed(pr, pr.user?.login),
+                      pr
+                    );
+                  }
                   return closed ? 'closed' : 'unchanged';
                 }
 
@@ -634,7 +737,14 @@ jobs:
                       merge_method: MERGE_METHOD,
                       sha: pr.head.sha, // guards against merging a commit newer than what we just checked
                     })
-                    .then(() => 'merged')
+                    .then(async () => {
+                      // Send Slack notification for merged PR
+                      await sendSlackNotification(
+                        SLACK_TEMPLATES.pr_merged(pr, pr.user?.login),
+                        pr
+                      );
+                      return 'merged';
+                    })
                     .catch((err) => {
                       // Octokit errors carry more detail than err.message alone --
                       // status and the API's own specific reason, sometimes a docs
@@ -682,7 +792,18 @@ jobs:
             if (context.eventName === 'pull_request_target') {
               // Fast path: react to just the PR that triggered this run.
               const prNumber = context.payload.pull_request.number;
-              console.log(`Evaluating PR #${prNumber} (${context.payload.action})`);
+              const prAction = context.payload.action;
+              console.log(`Evaluating PR #${prNumber} (${prAction})`);
+              
+              // Send notification when PR is opened
+              if (prAction === 'opened') {
+                const pr = context.payload.pull_request;
+                await sendSlackNotification(
+                  SLACK_TEMPLATES.pr_opened(pr, pr.user?.login),
+                  pr
+                );
+              }
+              
               const outcome = await evaluatePR(prNumber);
               console.log(`Summary: ${summarizeOutcomes([outcome])}`);
             } else {
